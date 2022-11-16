@@ -1,0 +1,20 @@
+{
+  name: "uncTemplate",                                  //你的mod在内部代码中的名称，这会作为content的前缀，需要在资源图片前面添加的文本就是这个名字
+                                                        //The name of your mod in the internal code, this will be prefixed to the content, the text that needs to be added in front of the resource image is this name
+  displayName: "UNC mod 模板",                           //mod的显示名称
+                                                        //The mod's display name
+  author: "author",                                     //你的名字 | あなたの名前（？）
+                                                        //Your name
+  main: "sample.SampleModMain",                         //你的mod主类路径，这是默认路径，请改成你自己的路径位置
+                                                        //Your mod main class path, this is the default path, please change it to your own path location
+  description: "这是一个使用UniverseCore作为前置的mod模板", //mod描述，在mod页面显示的副文本
+                                                        //The mod description, the side text displayed on the mod page
+  version: "0.1",                                       //你的mod版本
+                                                        //Your mod version
+  minGameVersion: 137,                                  //需要的mindustry游戏最低版本
+                                                        //Minimum version of mindustry game required
+  hideBrowser: true,                                    //在将你的mod发布到mod浏览器时删掉这一行
+                                                        //Delete this line and the previous line (line 16!) when publishing your mod to the mod browser
+
+  dependencies: ["universe-core"]
+}

@@ -1,0 +1,204 @@
+import java.util.jar.JarEntry
+import java.util.jar.JarOutputStream
+
+plugins {
+    id 'java'
+}
+
+version 'alpha-0.7.6'
+
+sourceSets.main.java.srcDirs = ["src"]
+
+repositories{
+    mavenCentral()
+    maven{ url 'https://www.jitpack.io' }
+}
+
+//对语言资源文件生成相应的待翻译模板
+"java SyncBundles.java".execute().waitForProcessOutput(System.out, System.err)
+
+ext{
+    //依赖的mindustry游戏本体版本
+    //Dependent mindustry game ontology version
+    mindustryVersion = 'v137'
+    //使用的UniverseCore版本
+    //UniverseCore version used
+    uncVersion = '1.5.3'
+    //你使用的Android SDK的API级别
+    //The API level of the Android SDK you are using
+    minSdkAPI = 30
+
+    //Android SDK的存放目录，如果你没有设置相关的环境变量，可以将这个变量设为路径的字面量
+    //The storage directory of the Android SDK, if you have not set the relevant environment variable, you can set this variable as the literal value of the path
+    sdkRoot = System.getenv("ANDROID_HOME")
+}
+
+tasks.withType(JavaCompile){
+    options.encoding = "UTF-8"
+    options.fork = true
+    options.forkOptions.jvmArgs.addAll([
+        "--add-opens", "jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+        "--add-opens", "jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
+        "--add-opens", "jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED",
+        "--add-opens", "jdk.compiler/com.sun.tools.javac.processing=ALL-UNNAMED",
+        "--add-opens", "jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
+        "--add-opens", "jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED"
+    ])
+    options.compilerArgs.addAll(['--release', '8'])
+}
+
+dependencies{
+    compileOnly "com.github.Anuken.Arc:arc-core:$mindustryVersion"
+    compileOnly "com.github.Anuken.Mindustry:core:$mindustryVersion"
+
+    compileOnly "com.github.EB-wilson.UniverseCore:mindustry:$uncVersion"
+    compileOnly "com.github.EB-wilson.UniverseCore:utilties:$uncVersion"
+
+    //下面的三个导入可能一般来说使用是较少的，可按需求删除
+    //The following three imports may generally be used less and can be deleted as needed
+    compileOnly "com.github.EB-wilson.UniverseCore:abstract:$uncVersion"     //功能抽象层，一些平台相关的行为被抽象为接口，要使用平台相关API时必须导入该模块
+    compileOnly "com.github.EB-wilson.UniverseCore:implabstract:$uncVersion" //中间实现层，有一些关于mod和加载器的功能
+    compileOnly "com.github.EB-wilson.UniverseCore:dynamilizer:$uncVersion"  //JDER动态化仓库的内置模块
+
+    //以下是通常不会用到的内部模块，但仍然允许导入，便于对一些较为复杂的需求进行自定义行为，按需选取
+    //The following are internal modules that are not usually used, but they are still allowed to be imported
+    //which is convenient for customizing behaviors for some more complex requirements, and can be selected on demand
+    //compileOnly "com.github.EB-wilson.UniverseCore:core:$uncVersion"       //仅有一个核心静态容器，保存了所有的功能接口的实现单例
+                                                                             //There is only one core static container, which saves the implementation singleton of all functional interfaces
+    //compileOnly "com.github.EB-wilson.UniverseCore:android:$uncVersion"    //平台相关的功能在安卓的默认实现
+                                                                             //The default implementation of platform-dependent functions in Android
+    //compileOnly "com.github.EB-wilson.UniverseCore:android26:$uncVersion"  //在安卓API26以上的安卓平台运行时的实现
+                                                                             //Implementation for Android platform runtimes above Android API 26
+    //compileOnly "com.github.EB-wilson.UniverseCore:desktop:$uncVersion"    //平台相关的功能在桌面的默认实现
+                                                                             //The default implementation of platform-related functions on the desktop
+    //compileOnly "com.github.EB-wilson.UniverseCore:desktop9:$uncVersion"   //当桌面版运行时VM版本1.9以上的平台实现
+                                                                             //Platform implementations of VM version 1.9 and above when the desktop version is running
+
+    compileOnly "com.github.EB-wilson.UniverseCore:annotations:$uncVersion"
+    annotationProcessor "com.github.EB-wilson.UniverseCore:annotations:$uncVersion"
+    annotationProcessor "com.github.Anuken:jabel:0.7.0"
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+}
+
+task jarAndroid{
+    dependsOn "jar"
+
+    doLast{
+        try {
+            File fi = new File("$sdkRoot/platforms/")
+            if (!fi.exists()) throw new RuntimeException("android SDK platfroms was not found");
+            def platformRoot = fi.listFiles().sort().reverse().find { f -> new File(f, "android.jar").exists() }
+
+            //collect dependencies needed for desugaring
+            def dependencies = (configurations.compileClasspath.asList() + configurations.runtimeClasspath.asList() + [new File(platformRoot, "android.jar")]).collect { "--classpath $it.path" }.join(" ")
+
+            try{
+                System.out.println("build android dex...")
+
+                //dex and desugar files - this requires d8 in your PATH
+                "d8 $dependencies --min-api 14 --output ${rootProject.name}-android.jar ${project.archivesBaseName}-desktop.jar"
+                    .execute(null, new File("$buildDir/libs")).waitForProcessOutput(System.out, System.err)
+            }
+            catch(Throwable ignored) {
+                def d8 = new File("$sdkRoot/build-tools/").listFiles().find {
+                    it.listFiles().any {
+                        it.name.contains("d8")
+                    } && Integer.valueOf(it.name.substring(0, 2)) >= minSdkAPI
+                }.listFiles().find { it.name.contains("d8") }
+
+                "$d8 $dependencies --min-api 14 --output ${rootProject.name}-android.jar ${project.archivesBaseName}-desktop.jar"
+                    .execute(null, new File("$buildDir/libs")).waitForProcessOutput(System.out, System.err)
+            }
+        }
+        catch (Throwable ignored) {
+            System.out.println("[WARNING] d8 tool or platform tools was not found, if you was installed android SDK, please check your environment variable")
+
+            delete(
+                files("${rootProject.buildDir}/libs/${rootProject.name}-android.jar")
+            )
+
+            def out = new JarOutputStream(new FileOutputStream("${rootProject.buildDir}/libs/${rootProject.name}-android.jar"))
+            out.putNextEntry(new JarEntry("non-androidMod.txt"))
+            StringReader reader = new StringReader(
+                "this mod is don't have classes.dex for android, please consider recompile with a SDK or run this mod on desktop only"
+            )
+
+            int r
+            while((r = reader.read()) != -1){
+                out.write(r)
+                out.flush()
+            }
+            out.close()
+        }
+    }
+}
+
+jar{
+    archiveFileName = "${project.archivesBaseName}-desktop.jar"
+
+    from(rootDir){
+        include "mod.hjson"
+        include "icon.png"
+        include "contributors.hjson"
+    }
+
+    from("assets/") {
+        include "**"
+    }
+}
+
+task deploy(type: Jar){
+    dependsOn jarAndroid
+    dependsOn jar
+    archiveFileName = "${project.archivesBaseName}.jar"
+
+    from{
+        [
+            zipTree("$buildDir/libs/${project.archivesBaseName}-desktop.jar"),
+            zipTree("$buildDir/libs/${project.archivesBaseName}-android.jar")
+        ]
+    }
+
+    doLast{
+        if(project.properties.get("modOutputDir") != null && !project.properties.get("modOutputDir").isEmpty()){
+            copy {
+                into("$modOutputDir/")
+                from("$buildDir/libs/${project.archivesBaseName}.jar")
+            }
+        }
+    }
+}
+
+task deployDesktop(type: Jar){
+    dependsOn jar
+    archiveFileName = "${project.archivesBaseName}.jar"
+
+    from{
+        [zipTree("$buildDir/libs/${project.archivesBaseName}-desktop.jar")]
+    }
+
+    doLast{
+        if(project.properties.get("modOutputDir") != null && !project.properties.get("modOutputDir").isEmpty()){
+            copy {
+                into("$modOutputDir/")
+                from("$buildDir/libs/${project.archivesBaseName}.jar")
+            }
+        }
+    }
+}
+
+//调试你的mod，在编译并将mod放入你的游戏mods文件夹后启动mindustry，这个任务支持调试器，也就意味着你在调试模式下允许这个任务就能直接在游戏中进行终端调试了
+//Debug your mod, start mindustry after compiling and putting the mod into your game mods folder
+//this task supports the debugger, which means you can directly debug the terminal in the game by allowing this task in debug mode
+task debugMod(dependsOn: classes, type: JavaExec){
+    dependsOn deployDesktop
+
+    main = "-jar"
+    args = [
+        project.properties.get("debugGamePath"),
+        "-debug"
+    ]
+}
