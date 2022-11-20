@@ -23,7 +23,7 @@ ext{
     mindustryVersion = 'v137'
     //使用的UniverseCore版本
     //UniverseCore version used
-    uncVersion = '1.5.3'
+    uncVersion = '1.5.7'
     //你使用的Android SDK的API级别
     //The API level of the Android SDK you are using
     minSdkAPI = 30
